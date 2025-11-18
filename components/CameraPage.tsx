@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, X, FlipHorizontal, Image, Download, Zap } from 'lucide-react';
 import { type Frame, type Photo } from '../types';
@@ -56,21 +55,44 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
   useEffect(() => {
     startCamera();
     return () => stopCamera();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facingMode]);
+  }, [startCamera, stopCamera]);
 
   const capturePhoto = async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
     const video = videoRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      console.error("Camera is not ready, video has no dimensions.");
+      return;
+    }
+    
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     canvas.width = 1080;
     canvas.height = 1920;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+    // Implement 'object-cover' logic to crop the video frame instead of stretching it.
+    const videoRatio = video.videoWidth / video.videoHeight;
+    const canvasRatio = canvas.width / canvas.height;
+    let sx, sy, sWidth, sHeight;
+
+    if (videoRatio > canvasRatio) { // video is wider than canvas, crop sides
+        sHeight = video.videoHeight;
+        sWidth = sHeight * canvasRatio;
+        sx = (video.videoWidth - sWidth) / 2;
+        sy = 0;
+    } else { // video is taller or same ratio, crop top/bottom
+        sWidth = video.videoWidth;
+        sHeight = sWidth / canvasRatio;
+        sy = (video.videoHeight - sHeight) / 2;
+        sx = 0;
+    }
+    // Draw the cropped portion of the video onto the canvas
+    ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
+
+    // FIX: Use window.Image to avoid conflict with the Image component from lucide-react.
     const frameImg = new window.Image();
     frameImg.crossOrigin = 'anonymous';
     

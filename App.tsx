@@ -19,7 +19,7 @@ export default function App() {
     setPage('capture');
   };
 
-  const handleFrameSelected = (frame: Frame) => {
+  const handleFrameSelected = (frame: Frame | null) => {
     setSelectedFrame(frame);
     setPage('editor');
   };
@@ -45,7 +45,7 @@ export default function App() {
           onBack={handleBackToUpload}
         />
       )}
-      {page === 'editor' && selectedImage && selectedFrame && (
+      {page === 'editor' && selectedImage && (
         <CameraPage
           imageSrc={selectedImage}
           frame={selectedFrame}

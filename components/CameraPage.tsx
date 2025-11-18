@@ -5,7 +5,7 @@ import { uploadToImageKit } from '../services/imagekit';
 
 interface CameraPageProps {
   imageSrc: string;
-  frame: Frame;
+  frame: Frame | null;
   onBack: () => void;
   onStartOver: () => void;
 }
@@ -26,9 +26,6 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
 
         const userImage = new Image();
         userImage.crossOrigin = 'anonymous';
-        
-        const frameImage = new Image();
-        frameImage.crossOrigin = 'anonymous';
 
         const userImagePromise = new Promise<void>((resolve, reject) => {
             userImage.onload = () => resolve();
@@ -36,37 +33,52 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
             userImage.src = imageSrc;
         });
 
-        const frameImagePromise = new Promise<void>((resolve, reject) => {
-            frameImage.onload = () => resolve();
-            frameImage.onerror = reject;
-            frameImage.src = frame.url;
-        });
+        await userImagePromise;
 
-        await Promise.all([userImagePromise, frameImagePromise]);
+        if (frame) {
+            const frameImage = new Image();
+            frameImage.crossOrigin = 'anonymous';
+            const frameImagePromise = new Promise<void>((resolve, reject) => {
+                frameImage.onload = () => resolve();
+                frameImage.onerror = reject;
+                frameImage.src = frame.url;
+            });
+            await frameImagePromise;
 
-        const frameAspectRatio = (frameImage.width > 0 && frameImage.height > 0) ? frameImage.width / frameImage.height : 9 / 16;
+            const frameAspectRatio = (frameImage.width > 0 && frameImage.height > 0) ? frameImage.width / frameImage.height : 9 / 16;
+            canvas.width = 1080;
+            canvas.height = 1080 / frameAspectRatio;
+            
+            const userImageRatio = userImage.width / userImage.height;
+            const canvasRatio = canvas.width / canvas.height;
+            let sx, sy, sWidth, sHeight;
 
-        canvas.width = 1080;
-        canvas.height = 1080 / frameAspectRatio;
-        
-        const userImageRatio = userImage.width / userImage.height;
-        const canvasRatio = canvas.width / canvas.height;
-        let sx, sy, sWidth, sHeight;
+            if (userImageRatio > canvasRatio) {
+                sHeight = userImage.height;
+                sWidth = sHeight * canvasRatio;
+                sx = (userImage.width - sWidth) / 2;
+                sy = 0;
+            } else {
+                sWidth = userImage.width;
+                sHeight = sWidth / canvasRatio;
+                sy = (userImage.height - sHeight) / 2;
+                sx = 0;
+            }
 
-        if (userImageRatio > canvasRatio) {
-            sHeight = userImage.height;
-            sWidth = sHeight * canvasRatio;
-            sx = (userImage.width - sWidth) / 2;
-            sy = 0;
+            ctx.drawImage(userImage, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
+            ctx.drawImage(frameImage, 0, 0, canvas.width, canvas.height);
         } else {
-            sWidth = userImage.width;
-            sHeight = sWidth / canvasRatio;
-            sy = (userImage.height - sHeight) / 2;
-            sx = 0;
+            const aspectRatio = userImage.width / userImage.height;
+            const MAX_DIMENSION = 1920;
+            if (userImage.width > userImage.height) {
+                canvas.width = Math.min(userImage.width, MAX_DIMENSION);
+                canvas.height = canvas.width / aspectRatio;
+            } else {
+                canvas.height = Math.min(userImage.height, MAX_DIMENSION);
+                canvas.width = canvas.height * aspectRatio;
+            }
+            ctx.drawImage(userImage, 0, 0, canvas.width, canvas.height);
         }
-
-        ctx.drawImage(userImage, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
-        ctx.drawImage(frameImage, 0, 0, canvas.width, canvas.height);
 
         setCompositedImage(canvas.toDataURL('image/jpeg', 0.9));
     } catch (error) {
@@ -84,7 +96,7 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
     if (!compositedImage) return;
     const a = document.createElement('a');
     a.href = compositedImage;
-    a.download = `framed-photo-${Date.now()}.jpg`;
+    a.download = `photo-${Date.now()}.jpg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -95,13 +107,13 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
 
     setIsUploading(true);
     try {
-      const fileName = `framed-photo-${Date.now()}.jpg`;
+      const fileName = `photo-${Date.now()}.jpg`;
       const result = await uploadToImageKit(compositedImage, fileName);
       
       if (navigator.share) {
         await navigator.share({
-          title: 'Framed Photo',
-          text: 'Check out this photo I framed!',
+          title: 'My Photo',
+          text: 'Check out this photo!',
           url: result.url,
         });
       } else {
@@ -137,7 +149,7 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
                 </div>
             )}
             {compositedImage && !isProcessing && (
-                <img src={compositedImage} alt="Framed Photo" className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" />
+                <img src={compositedImage} alt="Preview" className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" />
             )}
             {!compositedImage && !isProcessing && (
                  <div className="w-full h-full flex items-center justify-center rounded-2xl bg-gray-800">

@@ -1,11 +1,11 @@
 
 import React, { useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Slash } from 'lucide-react';
 import { type Frame } from '../types';
 import { FRAMES, CATEGORIES } from '../constants';
 
 interface FrameSelectionProps {
-  onSelectFrame: (frame: Frame) => void;
+  onSelectFrame: (frame: Frame | null) => void;
   onBack: () => void;
 }
 
@@ -45,6 +45,17 @@ const FrameSelection: React.FC<FrameSelectionProps> = ({ onSelectFrame, onBack }
       </div>
       
       <div className="p-4 grid grid-cols-2 gap-4 pb-24">
+        <button
+            onClick={() => onSelectFrame(null)}
+            className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all active:scale-95 flex flex-col items-center justify-center aspect-square text-center p-2"
+          >
+            <div className="w-24 h-24 border-4 border-dashed border-gray-300 rounded-2xl flex items-center justify-center mb-2">
+              <Slash className="w-10 h-10 text-gray-400" />
+            </div>
+            <h3 className="font-semibold text-sm">No Frame</h3>
+            <p className="text-xs text-gray-500">Use original photo</p>
+        </button>
+
         {filteredFrames.map(frame => (
           <button
             key={frame.id}

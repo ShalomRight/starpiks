@@ -88,6 +88,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onImageSelect, onTakePicture 
             <span className="font-bold">🖼️</span> Frame your memories
           </p>
         </div>
+        <p className="text-xs text-gray-500 mt-4">Version 2</p>
       </div>
     </div>
   );

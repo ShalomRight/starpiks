@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { ArrowLeft, Download, Upload, Loader2, RefreshCw } from 'lucide-react';
 import { type Frame } from '../types';
@@ -14,7 +15,9 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [compositedImage, setCompositedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(true);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+
 
   const drawCanvas = useCallback(async () => {
     setIsProcessing(true);
@@ -103,30 +106,35 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
   };
   
   const handleShare = async () => {
-    if (!compositedImage) return;
+    if (!compositedImage || isSharing) return;
+    setIsSharing(true);
+    setShareError(null);
 
-    setIsUploading(true);
     try {
-      const fileName = `photo-${Date.now()}.jpg`;
-      const result = await uploadToImageKit(compositedImage, fileName);
+      const uploadResult = await uploadToImageKit(compositedImage, `photo-${Date.now()}.jpg`);
       
       if (navigator.share) {
         await navigator.share({
-          title: 'My Photo',
-          text: 'Check out this photo!',
-          url: result.url,
+          title: 'My Photo Frame',
+          text: 'Check out the photo I framed!',
+          url: uploadResult.url,
         });
       } else {
-        await navigator.clipboard.writeText(result.url);
-        alert('Image URL copied to clipboard!');
+        navigator.clipboard.writeText(uploadResult.url);
+        alert('Share URL copied to clipboard!');
       }
     } catch (error) {
       console.error('Share error:', error);
-      alert('Failed to share image. Please try again.');
+      if (error instanceof Error) {
+        setShareError(`Share failed: ${error.message}`);
+      } else {
+        setShareError('An unknown error occurred during sharing.');
+      }
     } finally {
-      setIsUploading(false);
+      setIsSharing(false);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col">
@@ -163,7 +171,7 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
         <div className="flex gap-4">
              <button
               onClick={handleDownload}
-              disabled={isProcessing || isUploading || !compositedImage}
+              disabled={isProcessing || !compositedImage}
               className="flex-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-white font-semibold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
             >
               <Download size={24} />
@@ -171,13 +179,14 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
             </button>
             <button
               onClick={handleShare}
-              disabled={isProcessing || isUploading || !compositedImage}
-              className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-600 text-white font-semibold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
+              disabled={isProcessing || !compositedImage || isSharing}
+              className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-400 text-white font-semibold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
             >
-              {isUploading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Upload size={24} />}
-              Share
+              {isSharing ? <Loader2 className="w-6 h-6 animate-spin" /> : <Upload size={24} />}
+              {isSharing ? 'Sharing...' : 'Share'}
             </button>
         </div>
+        {shareError && <p className="text-red-400 text-center text-sm mt-3">{shareError}</p>}
       </footer>
     </div>
   );

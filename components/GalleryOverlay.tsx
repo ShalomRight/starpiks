@@ -131,7 +131,7 @@ const GalleryOverlay: React.FC<GalleryOverlayProps> = ({ isOpen, onClose, photos
               )}
             </div>
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-              {[...photos].reverse().map(photo => (
+              {photos.map(photo => (
                 <button
                   key={photo.id}
                   onClick={() => setSelectedPhotos(prev => prev.includes(photo.id) ? prev.filter(id => id !== photo.id) : [...prev, photo.id])}

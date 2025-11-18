@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, X, FlipHorizontal, Image, Download, Zap } from 'lucide-react';
+import { Camera, X, FlipHorizontal, Image as ImageIcon, Zap, Loader2 } from 'lucide-react';
 import { type Frame, type Photo } from '../types';
 import { storage } from '../services/storage';
 import GalleryOverlay from './GalleryOverlay';
@@ -17,55 +17,93 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [flashEnabled, setFlashEnabled] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
   const stopCamera = useCallback(() => {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
+      setIsCameraReady(false);
     }
   }, [stream]);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (currentFacingMode: 'user' | 'environment') => {
     stopCamera();
+    setCameraError(null);
+    setIsCameraReady(false);
+    
+    const constraints: MediaStreamConstraints = {
+      video: { 
+        facingMode: { ideal: currentFacingMode }, 
+        width: { ideal: 1920 }, 
+        height: { ideal: 1080 } 
+      }
+    };
+
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } }
-      });
-      
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        await videoRef.current.play();
       }
       setStream(mediaStream);
     } catch (err) {
       console.error('Camera error:', err);
-      alert('Failed to access camera. Please enable camera permissions.');
+      const fallbackConstraints: MediaStreamConstraints = { video: { facingMode: currentFacingMode } };
+      try {
+        const mediaStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+        }
+        setStream(mediaStream);
+      } catch (fallbackErr) {
+          console.error('Fallback camera error:', fallbackErr);
+          let message = 'Failed to access camera. Please enable permissions and ensure your camera is not in use.';
+          if (fallbackErr instanceof DOMException) {
+              if (fallbackErr.name === 'NotFoundError' || fallbackErr.name === 'DevicesNotFoundError') {
+                  message = `Could not find a camera for '${currentFacingMode}' mode. Try switching cameras.`;
+              } else if (fallbackErr.name === 'NotAllowedError' || fallbackErr.name === 'PermissionDeniedError') {
+                  message = 'Camera access denied. Please enable camera permissions in your browser settings.';
+              }
+          }
+          setCameraError(message);
+      }
     }
-  }, [facingMode, stopCamera]);
+  }, [stopCamera]);
 
 
   useEffect(() => {
     const loadPhotos = async () => {
       const stored = await storage.getPhotos();
-      setPhotos(stored);
+      setPhotos(stored.reverse()); // Show newest first
     };
     loadPhotos();
   }, []);
 
   useEffect(() => {
-    startCamera();
+    startCamera(facingMode);
     return () => stopCamera();
-  }, [startCamera, stopCamera]);
+  }, [facingMode, startCamera, stopCamera]);
+
+  const handleVideoReady = async () => {
+    if (videoRef.current && videoRef.current.readyState >= 3) {
+      try {
+        await videoRef.current.play();
+        setIsCameraReady(true);
+      } catch (error) {
+        console.error("Error playing video:", error);
+        setIsCameraReady(false);
+      }
+    }
+  };
 
   const capturePhoto = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-
-    const video = videoRef.current;
-    if (video.videoWidth === 0 || video.videoHeight === 0) {
-      console.error("Camera is not ready, video has no dimensions.");
+    if (!isCameraReady || !videoRef.current || !canvasRef.current) {
+      console.error("Camera not ready or refs not available.");
       return;
     }
-    
+
+    const video = videoRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -73,26 +111,23 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
     canvas.width = 1080;
     canvas.height = 1920;
 
-    // Implement 'object-cover' logic to crop the video frame instead of stretching it.
     const videoRatio = video.videoWidth / video.videoHeight;
     const canvasRatio = canvas.width / canvas.height;
     let sx, sy, sWidth, sHeight;
 
-    if (videoRatio > canvasRatio) { // video is wider than canvas, crop sides
+    if (videoRatio > canvasRatio) {
         sHeight = video.videoHeight;
         sWidth = sHeight * canvasRatio;
         sx = (video.videoWidth - sWidth) / 2;
         sy = 0;
-    } else { // video is taller or same ratio, crop top/bottom
+    } else {
         sWidth = video.videoWidth;
         sHeight = sWidth / canvasRatio;
         sy = (video.videoHeight - sHeight) / 2;
         sx = 0;
     }
-    // Draw the cropped portion of the video onto the canvas
     ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
 
-    // FIX: Use window.Image to avoid conflict with the Image component from lucide-react.
     const frameImg = new window.Image();
     frameImg.crossOrigin = 'anonymous';
     
@@ -123,7 +158,7 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
     };
 
     await storage.savePhoto(photo);
-    setPhotos(prev => [...prev, photo]);
+    setPhotos(prev => [photo, ...prev]);
     
     const flash = document.createElement('div');
     flash.style.cssText = 'position:fixed;inset:0;background:white;z-index:9999;animation:flash 0.3s ease-out';
@@ -141,8 +176,10 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
       <video
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover"
+        onLoadedData={handleVideoReady}
         playsInline
         muted
+        autoPlay
       />
       
       <div className="absolute inset-0 pointer-events-none">
@@ -154,6 +191,14 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
       </div>
 
       <canvas ref={canvasRef} className="hidden" />
+
+      {cameraError && (
+        <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center p-4 z-20">
+          <X className="w-16 h-16 text-red-500 mb-4" />
+          <h2 className="text-xl text-white font-bold mb-2">Camera Error</h2>
+          <p className="text-white/80">{cameraError}</p>
+        </div>
+      )}
 
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/50 to-transparent">
         <button
@@ -190,21 +235,25 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
           >
             {photos.length > 0 ? (
               <>
-                <img src={photos[photos.length - 1].thumbnail} alt="Last" className="w-full h-full object-cover" />
+                <img src={photos[0].thumbnail} alt="Last" className="w-full h-full object-cover" />
                 <div className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
                   {photos.length}
                 </div>
               </>
             ) : (
-              <Image className="w-6 h-6 text-white absolute inset-0 m-auto" />
+              <ImageIcon className="w-6 h-6 text-white absolute inset-0 m-auto" />
             )}
           </button>
 
           <button
             onClick={capturePhoto}
-            className="w-20 h-20 bg-white rounded-full hover:scale-105 active:scale-95 transition-all shadow-lg flex items-center justify-center"
+            disabled={!isCameraReady || !!cameraError}
+            className="w-20 h-20 bg-white rounded-full hover:scale-105 active:scale-95 transition-all shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <div className="w-16 h-16 border-4 border-black rounded-full" />
+            {!isCameraReady ? 
+              (<Loader2 className="w-10 h-10 text-black animate-spin" />) :
+              (<div className="w-16 h-16 border-4 border-black rounded-full" />)
+            }
           </button>
           <div className="w-14 h-14" />
         </div>

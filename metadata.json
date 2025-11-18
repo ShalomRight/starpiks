@@ -1,6 +1,6 @@
 {
   "name": "Copy of PWA Photo Booth",
-  "description": "A progressive web application that allows users to capture photos, apply beautiful frames, and instantly share their memories. It features a simple interface for frame selection, a live camera view, and a gallery to manage, download, and share photos.",
+  "description": "A progressive web application that allows users to upload photos, apply beautiful frames, and instantly share their memories. It features a simple interface for frame selection and a preview to download, and share photos.",
   "requestFramePermissions": [
     "camera"
   ]

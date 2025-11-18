@@ -1,4 +1,3 @@
-
 import { IMAGEKIT_CONFIG } from '../constants';
 
 export const uploadToImageKit = async (dataUrl: string, fileName: string): Promise<{ url: string; fileId: string }> => {
@@ -11,12 +10,9 @@ export const uploadToImageKit = async (dataUrl: string, fileName: string): Promi
     formData.append('fileName', fileName);
     formData.append('publicKey', IMAGEKIT_CONFIG.publicKey);
     
-    const authHeaders = new Headers();
-    authHeaders.append('Authorization', `Basic ${btoa(IMAGEKIT_CONFIG.publicKey + ':')}`);
-
+    // The Authorization header is not needed for client-side uploads with a public key and was causing an error.
     const uploadResponse = await fetch('https://upload.imagekit.io/api/v1/files/upload', {
       method: 'POST',
-      headers: authHeaders,
       body: formData
     });
     

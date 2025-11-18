@@ -1,32 +1,56 @@
-
 import React, { useState } from 'react';
-import LandingPage from './components/LandingPage';
 import FrameSelection from './components/FrameSelection';
+import LandingPage from './components/LandingPage';
 import CameraPage from './components/CameraPage';
+import CapturePage from './components/CapturePage';
 import { type Frame } from './types';
 
 export default function App() {
-  const [page, setPage] = useState<'landing' | 'frames' | 'camera'>('landing');
+  const [page, setPage] = useState<'upload' | 'frames' | 'editor' | 'capture'>('upload');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedFrame, setSelectedFrame] = useState<Frame | null>(null);
 
-  const handleSelectFrame = (frame: Frame) => {
-    setSelectedFrame(frame);
-    setPage('camera');
+  const handleImageSelected = (image: string) => {
+    setSelectedImage(image);
+    setPage('frames');
   };
+  
+  const handleGoToCapture = () => {
+    setPage('capture');
+  };
+
+  const handleFrameSelected = (frame: Frame) => {
+    setSelectedFrame(frame);
+    setPage('editor');
+  };
+
+  const handleBackToUpload = () => {
+    setSelectedImage(null);
+    setSelectedFrame(null);
+    setPage('upload');
+  }
+
+  const handleBackToFrames = () => {
+    setSelectedFrame(null);
+    setPage('frames');
+  }
 
   return (
     <>
-      {page === 'landing' && <LandingPage onStart={() => setPage('frames')} />}
-      {page === 'frames' && (
+      {page === 'upload' && <LandingPage onImageSelect={handleImageSelected} onTakePicture={handleGoToCapture} />}
+      {page === 'capture' && <CapturePage onPhotoTaken={handleImageSelected} onBack={handleBackToUpload} />}
+      {page === 'frames' && selectedImage && (
         <FrameSelection 
-          onSelectFrame={handleSelectFrame}
-          onBack={() => setPage('landing')}
+          onSelectFrame={handleFrameSelected}
+          onBack={handleBackToUpload}
         />
       )}
-      {page === 'camera' && selectedFrame && (
+      {page === 'editor' && selectedImage && selectedFrame && (
         <CameraPage
-          selectedFrame={selectedFrame}
-          onBack={() => setPage('frames')}
+          imageSrc={selectedImage}
+          frame={selectedFrame}
+          onBack={handleBackToFrames}
+          onStartOver={handleBackToUpload}
         />
       )}
     </>

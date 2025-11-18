@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, X, FlipHorizontal, Image as ImageIcon, Zap, Loader2 } from 'lucide-react';
+import { Camera, X, FlipHorizontal, Zap, Loader2, AlertCircle, Check, ArrowLeft } from 'lucide-react';
 import { type Frame, type Photo } from '../types';
 import { storage } from '../services/storage';
 import GalleryOverlay from './GalleryOverlay';
+import ImageIcon from 'lucide-react/dist/esm/icons/image';
 
 interface CameraPageProps { 
   selectedFrame: Frame; 
@@ -12,109 +13,101 @@ interface CameraPageProps {
 const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  
+  // Gallery State
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
-  const [flashEnabled, setFlashEnabled] = useState(false);
-  const [isCameraReady, setIsCameraReady] = useState(false);
+
+  // Photo Capture State
+  const [capturedPhoto, setCapturedPhoto] = useState<Photo | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+
+  // Camera Status State
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [permission, setPermission] = useState('prompt');
 
   const stopCamera = useCallback(() => {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
-      setIsCameraReady(false);
     }
   }, [stream]);
 
-  const startCamera = useCallback(async (currentFacingMode: 'user' | 'environment') => {
+  const handleCameraError = (err: Error) => {
+    console.error('Camera error:', err);
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      setCameraError('Camera permission denied. Please allow camera access in your browser settings.');
+      setPermission('denied');
+    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      setCameraError('No camera found on this device. Try switching camera modes.');
+    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+      setCameraError('Camera is already in use by another application.');
+    } else if (err.name === 'OverconstrainedError') {
+      setCameraError('Could not satisfy camera requirements.');
+    } else {
+      setCameraError(`An unexpected camera error occurred: ${err.message}`);
+    }
+  };
+
+  const startCamera = useCallback(async () => {
     stopCamera();
     setCameraError(null);
-    setIsCameraReady(false);
     
-    const constraints: MediaStreamConstraints = {
-      video: { 
-        facingMode: { ideal: currentFacingMode }, 
-        width: { ideal: 1920 }, 
-        height: { ideal: 1080 } 
-      }
-    };
-
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode, 
+          width: { ideal: 1920 }, 
+          height: { ideal: 1080 } 
+        }
+      });
+      
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        await videoRef.current.play();
       }
       setStream(mediaStream);
+      setPermission('granted');
     } catch (err) {
-      console.error('Camera error:', err);
-      const fallbackConstraints: MediaStreamConstraints = { video: { facingMode: currentFacingMode } };
-      try {
-        const mediaStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
-        }
-        setStream(mediaStream);
-      } catch (fallbackErr) {
-          console.error('Fallback camera error:', fallbackErr);
-          let message = 'Failed to access camera. Please enable permissions and ensure your camera is not in use.';
-          if (fallbackErr instanceof DOMException) {
-              if (fallbackErr.name === 'NotFoundError' || fallbackErr.name === 'DevicesNotFoundError') {
-                  message = `Could not find a camera for '${currentFacingMode}' mode. Try switching cameras.`;
-              } else if (fallbackErr.name === 'NotAllowedError' || fallbackErr.name === 'PermissionDeniedError') {
-                  message = 'Camera access denied. Please enable camera permissions in your browser settings.';
-              }
-          }
-          setCameraError(message);
-      }
+      handleCameraError(err as Error);
     }
-  }, [stopCamera]);
-
+  }, [facingMode, stopCamera]);
 
   useEffect(() => {
     const loadPhotos = async () => {
       const stored = await storage.getPhotos();
-      setPhotos(stored.reverse()); // Show newest first
+      setPhotos(stored.reverse());
     };
     loadPhotos();
-  }, []);
-
-  useEffect(() => {
-    startCamera(facingMode);
+    startCamera();
     return () => stopCamera();
   }, [facingMode, startCamera, stopCamera]);
 
-  const handleVideoReady = async () => {
-    if (videoRef.current && videoRef.current.readyState >= 3) {
-      try {
-        await videoRef.current.play();
-        setIsCameraReady(true);
-      } catch (error) {
-        console.error("Error playing video:", error);
-        setIsCameraReady(false);
-      }
-    }
-  };
 
   const capturePhoto = async () => {
-    if (!isCameraReady || !videoRef.current || !canvasRef.current) {
-      console.error("Camera not ready or refs not available.");
-      return;
-    }
+    if (!videoRef.current || !canvasRef.current || isCapturing) return;
+
+    setIsCapturing(true);
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+        setIsCapturing(false);
+        return;
+    }
 
+    // Set canvas to desired output dimensions
     canvas.width = 1080;
     canvas.height = 1920;
 
+    // Calculate cropping to maintain aspect ratio (cover)
     const videoRatio = video.videoWidth / video.videoHeight;
     const canvasRatio = canvas.width / canvas.height;
     let sx, sy, sWidth, sHeight;
-
     if (videoRatio > canvasRatio) {
         sHeight = video.videoHeight;
         sWidth = sHeight * canvasRatio;
@@ -126,29 +119,28 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
         sy = (video.videoHeight - sHeight) / 2;
         sx = 0;
     }
+
+    // Draw cropped video to canvas
     ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
 
+    // Overlay the selected frame
     const frameImg = new window.Image();
     frameImg.crossOrigin = 'anonymous';
-    
-    await new Promise((resolve, reject) => {
+    await new Promise((resolve) => {
       frameImg.onload = resolve;
-      frameImg.onerror = reject;
+      frameImg.onerror = () => resolve(null); // Continue even if frame fails
       frameImg.src = selectedFrame.url;
     });
-
     ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
+
+    // Create data URL and thumbnail
     const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-    
     const thumbCanvas = document.createElement('canvas');
     thumbCanvas.width = 200;
     thumbCanvas.height = 200;
-    const thumbCtx = thumbCanvas.getContext('2d');
-    if (thumbCtx) {
-      thumbCtx.drawImage(canvas, 0, 0, 200, 200);
-    }
+    thumbCanvas.getContext('2d')?.drawImage(canvas, 0, 0, 200, 200);
     const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.8);
-
+    
     const photo: Photo = {
       id: crypto.randomUUID(),
       dataUrl,
@@ -157,13 +149,19 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
       frameId: selectedFrame.id
     };
 
-    await storage.savePhoto(photo);
-    setPhotos(prev => [photo, ...prev]);
-    
-    const flash = document.createElement('div');
-    flash.style.cssText = 'position:fixed;inset:0;background:white;z-index:9999;animation:flash 0.3s ease-out';
-    document.body.appendChild(flash);
-    setTimeout(() => flash.remove(), 300);
+    setCapturedPhoto(photo);
+    setIsCapturing(false);
+  };
+  
+  const retakePhoto = () => {
+    setCapturedPhoto(null);
+  };
+
+  const savePhoto = async () => {
+    if (!capturedPhoto) return;
+    await storage.savePhoto(capturedPhoto);
+    setPhotos(prev => [capturedPhoto, ...prev]);
+    setCapturedPhoto(null);
   };
 
   const handleGoBack = () => {
@@ -171,57 +169,75 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
     onBack();
   }
 
+  // Preview screen after photo is taken
+  if (capturedPhoto) {
+    return (
+      <div className="fixed inset-0 bg-black">
+        <img src={capturedPhoto.dataUrl} alt="Captured" className="w-full h-full object-contain" />
+        <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center bg-gradient-to-b from-black/50 to-transparent">
+            <button
+                onClick={retakePhoto}
+                className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30"
+            >
+                <ArrowLeft className="w-6 h-6 text-white" />
+            </button>
+            <h2 className="text-white font-semibold text-lg">Preview</h2>
+            <div className="w-10"></div>
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
+          <div className="flex items-center justify-around gap-4">
+            <button
+              onClick={retakePhoto}
+              className="flex-1 bg-white/20 backdrop-blur-sm text-white py-4 rounded-2xl font-semibold hover:bg-white/30 transition-all flex items-center justify-center gap-2"
+            >
+              <Camera size={24} />
+              Retake
+            </button>
+            <button
+              onClick={savePhoto}
+              className="flex-1 bg-white text-black py-4 rounded-2xl font-semibold hover:bg-gray-100 transition-all flex items-center justify-center gap-2"
+            >
+              <Check size={24} />
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Main camera view
   return (
     <div className="fixed inset-0 bg-black">
-      <video
-        ref={videoRef}
-        className="absolute inset-0 w-full h-full object-cover"
-        onLoadedData={handleVideoReady}
-        playsInline
-        muted
-        autoPlay
-      />
-      
+      <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" playsInline muted autoPlay />
       <div className="absolute inset-0 pointer-events-none">
-        <img 
-          src={selectedFrame.url} 
-          alt="Frame" 
-          className="w-full h-full object-cover"
-        />
+        <img src={selectedFrame.url} alt="Frame" className="w-full h-full object-cover" />
       </div>
-
       <canvas ref={canvasRef} className="hidden" />
 
       {cameraError && (
-        <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center p-4 z-20">
-          <X className="w-16 h-16 text-red-500 mb-4" />
-          <h2 className="text-xl text-white font-bold mb-2">Camera Error</h2>
-          <p className="text-white/80">{cameraError}</p>
+        <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center p-6 z-20">
+            <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+            <h2 className="text-2xl text-white font-bold mb-2">Camera Error</h2>
+            <p className="text-white/80 mb-6">{cameraError}</p>
+            <button
+                onClick={startCamera}
+                className="bg-white/20 text-white py-2 px-4 rounded-lg"
+            >
+                Try Again
+            </button>
         </div>
       )}
 
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/50 to-transparent">
-        <button
-          onClick={handleGoBack}
-          className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30 transition-all"
-        >
+        <button onClick={handleGoBack} className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30">
           <X className="w-6 h-6 text-white" />
         </button>
-        
         <div className="flex gap-2">
-          <button
-            onClick={() => setFlashEnabled(!flashEnabled)}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-              flashEnabled ? 'bg-yellow-500' : 'bg-white/20 backdrop-blur-sm'
-            }`}
-          >
-            <Zap className={`w-5 h-5 ${flashEnabled ? 'text-white' : 'text-white'}`} />
+          <button className="w-10 h-10 rounded-full flex items-center justify-center bg-white/20 backdrop-blur-sm">
+            <Zap className="w-5 h-5 text-white" />
           </button>
-          
-          <button
-            onClick={() => setFacingMode(prev => prev === 'user' ? 'environment' : 'user')}
-            className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30 transition-all"
-          >
+          <button onClick={() => setFacingMode(p => p === 'user' ? 'environment' : 'user')} className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30">
             <FlipHorizontal className="w-5 h-5 text-white" />
           </button>
         </div>
@@ -229,10 +245,7 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
 
       <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
         <div className="flex items-center justify-around">
-          <button
-            onClick={() => setGalleryOpen(true)}
-            className="relative w-14 h-14 bg-white/20 backdrop-blur-sm rounded-xl overflow-hidden hover:bg-white/30 transition-all"
-          >
+          <button onClick={() => setGalleryOpen(true)} className="relative w-14 h-14 bg-white/20 backdrop-blur-sm rounded-xl overflow-hidden hover:bg-white/30">
             {photos.length > 0 ? (
               <>
                 <img src={photos[0].thumbnail} alt="Last" className="w-full h-full object-cover" />
@@ -244,34 +257,14 @@ const CameraPage: React.FC<CameraPageProps> = ({ selectedFrame, onBack }) => {
               <ImageIcon className="w-6 h-6 text-white absolute inset-0 m-auto" />
             )}
           </button>
-
-          <button
-            onClick={capturePhoto}
-            disabled={!isCameraReady || !!cameraError}
-            className="w-20 h-20 bg-white rounded-full hover:scale-105 active:scale-95 transition-all shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {!isCameraReady ? 
-              (<Loader2 className="w-10 h-10 text-black animate-spin" />) :
-              (<div className="w-16 h-16 border-4 border-black rounded-full" />)
-            }
+          <button onClick={capturePhoto} disabled={isCapturing || !!cameraError} className="w-20 h-20 bg-white rounded-full hover:scale-105 active:scale-95 transition-all shadow-lg flex items-center justify-center disabled:opacity-50">
+            {isCapturing ? <Loader2 className="w-10 h-10 text-black animate-spin" /> : <div className="w-16 h-16 border-4 border-black rounded-full" />}
           </button>
           <div className="w-14 h-14" />
         </div>
       </div>
 
-      <GalleryOverlay 
-        isOpen={galleryOpen}
-        onClose={() => setGalleryOpen(false)}
-        photos={photos}
-        setPhotos={setPhotos}
-      />
-
-      <style>{`
-        @keyframes flash {
-          0% { opacity: 1; }
-          100% { opacity: 0; }
-        }
-      `}</style>
+      <GalleryOverlay isOpen={galleryOpen} onClose={() => setGalleryOpen(false)} photos={photos} setPhotos={setPhotos} />
     </div>
   );
 }

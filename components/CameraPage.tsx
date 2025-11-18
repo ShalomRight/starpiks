@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { ArrowLeft, Download, Upload, Loader2, RefreshCw } from 'lucide-react';
 import { type Frame } from '../types';
-import { uploadToImageKit } from '../services/imagekit';
+import { uploadToCloudinary } from '../services/cloudinary';
 
 interface CameraPageProps {
   imageSrc: string;
@@ -28,7 +28,6 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
         if (!ctx) return;
 
         const userImage = new Image();
-        userImage.crossOrigin = 'anonymous';
 
         const userImagePromise = new Promise<void>((resolve, reject) => {
             userImage.onload = () => resolve();
@@ -99,7 +98,7 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
     if (!compositedImage) return;
     const a = document.createElement('a');
     a.href = compositedImage;
-    a.download = `photo-${Date.now()}.jpg`;
+    a.download = `photo-frame-studio-${Date.now()}.jpg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -111,22 +110,22 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
     setShareError(null);
 
     try {
-      const uploadResult = await uploadToImageKit(compositedImage, `photo-${Date.now()}.jpg`);
+      const uploadedUrl = await uploadToCloudinary(compositedImage);
       
       if (navigator.share) {
         await navigator.share({
           title: 'My Photo Frame',
           text: 'Check out the photo I framed!',
-          url: uploadResult.url,
+          url: uploadedUrl,
         });
       } else {
-        navigator.clipboard.writeText(uploadResult.url);
+        navigator.clipboard.writeText(uploadedUrl);
         alert('Share URL copied to clipboard!');
       }
     } catch (error) {
       console.error('Share error:', error);
       if (error instanceof Error) {
-        setShareError(`Share failed: ${error.message}`);
+        setShareError(`Share failed: ${error.message}. Please check your Cloudinary config.`);
       } else {
         setShareError('An unknown error occurred during sharing.');
       }
@@ -137,13 +136,13 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
 
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex flex-col">
-       <header className="flex items-center justify-between p-4 bg-black/30 z-10">
-        <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 text-gray-800 flex flex-col">
+       <header className="flex items-center justify-between p-4 bg-white/80 backdrop-blur-lg border-b border-gray-200 z-10">
+        <button onClick={onBack} className="p-2 hover:bg-gray-200 rounded-full">
             <ArrowLeft className="w-6 h-6" />
         </button>
-        <h2 className="text-xl font-semibold">Preview & Share</h2>
-        <button onClick={onStartOver} className="p-2 hover:bg-white/10 rounded-full">
+        <h2 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">Preview & Share</h2>
+        <button onClick={onStartOver} className="p-2 hover:bg-gray-200 rounded-full">
             <RefreshCw className="w-5 h-5" />
         </button>
       </header>
@@ -153,40 +152,40 @@ const CameraPage: React.FC<CameraPageProps> = ({ imageSrc, frame, onBack, onStar
             <canvas ref={canvasRef} className="hidden" />
             {isProcessing && (
                 <div className="w-full h-full flex items-center justify-center rounded-2xl">
-                    <Loader2 className="w-10 h-10 animate-spin" />
+                    <Loader2 className="w-10 h-10 animate-spin text-purple-600" />
                 </div>
             )}
             {compositedImage && !isProcessing && (
-                <img src={compositedImage} alt="Preview" className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" />
+                <img src={compositedImage} alt="Preview" className="max-w-full max-h-[80vh] object-contain shadow-2xl rounded-lg" />
             )}
             {!compositedImage && !isProcessing && (
-                 <div className="w-full h-full flex items-center justify-center rounded-2xl bg-gray-800">
+                 <div className="w-full h-full flex items-center justify-center rounded-2xl bg-gray-200">
                     <p>Error creating image.</p>
                 </div>
             )}
         </div>
       </main>
 
-      <footer className="p-4 bg-black/30">
-        <div className="flex gap-4">
+      <footer className="p-4 bg-white/80 backdrop-blur-lg border-t border-gray-200 z-10">
+        <div className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
              <button
               onClick={handleDownload}
               disabled={isProcessing || !compositedImage}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-white font-semibold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
+              className="w-full cursor-pointer bg-white text-black border border-gray-300 font-semibold py-4 px-6 rounded-full hover:bg-gray-100 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Download size={24} />
+              <Download className="w-5 h-5" />
               Download
             </button>
             <button
               onClick={handleShare}
               disabled={isProcessing || !compositedImage || isSharing}
-              className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-400 text-white font-semibold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
+              className="w-full cursor-pointer bg-black text-white font-semibold py-4 px-6 rounded-full hover:bg-gray-800 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSharing ? <Loader2 className="w-6 h-6 animate-spin" /> : <Upload size={24} />}
+              {isSharing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
               {isSharing ? 'Sharing...' : 'Share'}
             </button>
         </div>
-        {shareError && <p className="text-red-400 text-center text-sm mt-3">{shareError}</p>}
+        {shareError && <p className="text-red-600 text-center text-sm mt-3">{shareError}</p>}
       </footer>
     </div>
   );

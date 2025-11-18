@@ -17,37 +17,39 @@ const FrameSelection: React.FC<FrameSelectionProps> = ({ onSelectFrame, onBack }
     : FRAMES.filter(f => f.category === selectedCategory.toLowerCase());
   
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="flex items-center justify-between p-4">
-          <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full">
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-          <h2 className="text-xl font-semibold">Select a Frame</h2>
-          <div className="w-10" />
-        </div>
-        
-        <div className="flex gap-2 px-4 pb-4 overflow-x-auto">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
-                selectedCategory === cat
-                  ? 'bg-black text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {cat}
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+      <header className="bg-white/80 backdrop-blur-lg border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between p-4">
+            <button onClick={onBack} className="p-2 hover:bg-gray-200 rounded-full">
+              <ArrowLeft className="w-6 h-6" />
             </button>
-          ))}
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">Select a Frame</h2>
+            <div className="w-10" />
+          </div>
+          
+          <div className="flex gap-2 px-4 pb-4 overflow-x-auto">
+            {CATEGORIES.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
+                  selectedCategory === cat
+                    ? 'bg-black text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      </header>
       
-      <div className="p-4 grid grid-cols-2 gap-4 pb-24">
+      <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 pb-24 max-w-4xl mx-auto">
         <button
             onClick={() => onSelectFrame(null)}
-            className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all active:scale-95 flex flex-col items-center justify-center aspect-square text-center p-2"
+            className="bg-white/90 backdrop-blur-lg rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all active:scale-95 flex flex-col items-center justify-center aspect-square text-center p-2"
           >
             <div className="w-24 h-24 border-4 border-dashed border-gray-300 rounded-2xl flex items-center justify-center mb-2">
               <Slash className="w-10 h-10 text-gray-400" />
@@ -60,7 +62,7 @@ const FrameSelection: React.FC<FrameSelectionProps> = ({ onSelectFrame, onBack }
           <button
             key={frame.id}
             onClick={() => onSelectFrame(frame)}
-            className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all active:scale-95"
+            className="bg-white/90 backdrop-blur-lg rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all active:scale-95"
           >
             <div className="aspect-square bg-gray-100">
               <img src={frame.url} alt={frame.name} className="w-full h-full object-cover" />
